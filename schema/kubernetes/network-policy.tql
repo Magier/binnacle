@@ -1,0 +1,91 @@
+define
+
+
+network-policy-ruleset sub ruleset;
+
+# encode semantics of the pod selection explicitely in the type
+peer-selection sub pod-selection;
+
+policy-type sub attribute, value string, regex "^(Ingress|Egress)$";
+
+network-policy sub k8s-ns-object,
+    owns policy-type,
+    owns pod-selector,
+    plays label-selection:selector,
+    plays no-label-selection-match:selector,
+    plays selected-by-network-policy:policy,
+    plays connection-allowed-by-network-policy:policy,
+    plays ruleset:owner; 
+
+end-port sub attribute, value long;
+network-policy-port sub entity,
+    owns port-number,
+    owns port-name,
+    owns end-port,
+    owns protocol,
+    plays port-restriction:port,
+    plays restricted-connection-allowed-by-network-policy:port,
+    plays network-policy-rule:target-port;
+
+
+except sub cidr_base;
+ip-block sub attribute, value string,
+    owns cidr,
+    owns except;
+
+
+network-policy-rule sub relation,
+    # owns network-policy-port,
+    relates peer,
+    relates target-port,
+    relates affected-pod,
+    plays label-selection:selector,
+    plays network-policy-permission:policy-rule,
+    plays connection-allowed-by-network-policy:policy-rule,
+    plays label-selection-match:selector,
+    plays ruleset:entry;
+
+network-policy-ingress-rule sub network-policy-rule;
+network-policy-egress-rule sub network-policy-rule;
+
+network-policy-peer sub entity,
+    owns pod-selector,
+    owns namespace-selector,
+    owns ip-block,
+    plays network-policy-rule:peer,
+    plays label-selection-match:selector,
+    plays no-label-selection-match:selector;
+
+network-policy-source sub network-policy-peer;
+    #plays network-policy-ingress-rule:peer;
+
+network-policy-destination sub network-policy-peer;
+    #plays network-policy-egress-rule:peer;
+
+
+# use matches as intermediary result to allow explicit handling of pod/ns selectors
+pod-selection-match sub label-selection-match;
+namespace-selection-match sub label-selection-match;
+no-pod-selection-match sub no-label-selection-match;
+no-namespace-selection-match sub no-label-selection-match;
+
+
+
+
+connection-allowed-by-network-policy sub network-relation,
+    relates policy-rule,
+    relates policy;
+
+restricted-connection-allowed-by-network-policy sub connection-allowed-by-network-policy,
+    relates port;
+
+network-policy-permission sub network-relation,
+    plays port-restriction:affected,
+    relates policy-rule;
+
+egress-permission sub network-policy-permission;
+ingress-permission sub network-policy-permission;
+
+port-restriction sub relation,
+    relates affected,
+    relates port;

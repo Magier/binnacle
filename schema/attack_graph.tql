@@ -1,0 +1,312 @@
+define 
+
+can sub attribute, value string;  #  the action a role can perform in the capability relation
+cve sub attribute, value string;
+label sub attribute, value string;
+# target-cve sub attribute, value string;
+name sub attribute, value string;
+service-account-name sub attribute, value string;
+automount-sa-token sub attribute, value boolean;
+data sub attribute, value string;
+privilege-level sub attribute, value string;#, regex "$(none|user|root)$";
+tactic sub attribute, value string;
+technique sub attribute, value string;
+
+implication sub relation,
+    relates condition,
+    relates action,
+    relates thing,
+    relates environment,
+    relates requires,
+    plays implication:requires,
+    plays action:requires;
+
+
+action sub relation,
+    # owns can,
+    owns tactic,
+    owns technique,
+    relates actor,
+    relates target,
+    relates requires,
+    plays implication:requires,
+    plays implication:action;
+    # relates implication;
+
+
+asset sub entity, 
+    owns data,
+    plays access-to-credentials:asset;
+service-account-token sub asset;
+
+adversary sub entity,
+    plays action:actor,
+    plays ability:actor;
+
+# TODO add rule that exploit ability looks at CVE-ID; this creates relation to vuln;
+ 
+
+is-vulnerable sub implication;
+
+vulnerability sub entity,
+    owns name,
+    owns cve,
+    # owns post-condition,
+    plays has-post-condition:source,
+    plays contains:thing,
+    plays implication:thing,
+    plays action:target;
+
+
+condition sub entity,
+    owns label,
+    plays has-condition:condition,
+    plays implication:condition;
+
+
+capability sub implication,
+    owns resource-type;
+
+
+can-read sub capability;
+can-write sub capability;
+can-execute sub capability;
+can-create sub can-write;
+
+
+run-in-workload sub can-execute,
+    owns privilege-level;
+
+
+# TODO privilege level depends on running process
+run-in-workload-condition sub condition,
+    owns privilege-level;
+
+access-to-credentials sub implication,
+    relates asset;
+
+
+
+exploit sub entity,
+    owns name,
+    owns cve,
+    plays ability:target;
+
+
+# exploit-vulnerability sub ability;
+#     relates vulnerability;
+    # relates target isa Vulnerability
+
+# can-impersonate-subject sub ability;
+# ad-sensitive-data sub ability;
+
+# post-condition sub condition;
+# pre-condition sub condition;
+
+# execute-in-workload sub condition,
+#     plays
+
+
+has-condition sub relation,
+    relates condition,
+    relates target;
+
+has-post-condition sub has-condition,
+    relates source; 
+
+has-pre-condition sub has-condition;
+
+
+
+ability sub relation,
+    owns can,
+    relates actor,
+    relates target;
+
+
+
+exploit-vulnerability sub action;
+impersonate-subject sub action;
+
+run-malicious-code-in-workload sub action;
+denial-of-service sub action;
+
+
+deploy-pod sub action,
+    owns ns,
+    owns host-path,
+    owns host-path-type;
+
+
+
+rule workload-containing-vulnerability-is-vulnerable:
+when {
+    $env isa pod;
+    $v isa vulnerability, has cve $cve;
+    (container:$env, thing: $v) isa contains;
+} then {
+    (environment: $env, thing: $v) isa is-vulnerable;
+};
+
+
+rule adversary-can-exploit-vulnerability-with-exploit:
+when {
+    $exploit isa exploit, has cve $tcve;
+    $v isa vulnerability, has cve $cve;
+    $adv isa adversary;
+    $is-vulnerable (environment: $pod, thing: $v) isa is-vulnerable;
+    $has-ability (actor: $adv, target: $exploit) isa ability;
+    $tcve == $cve;
+} then {
+    (actor:$adv, requires: $is-vulnerable, target: $v) isa exploit-vulnerability;
+};
+
+
+# TODO try to generalize this kind of relation rule to arbitrary implication types
+# rule action-apply-post-conditions-of-vulnerability:
+# when {
+#     $action (target: $vuln) isa action;
+#     $is-in (thing: $vuln, container: $env) isa contains;
+#     $has-implication (source: $vuln, condition: $cond) isa has-post-condition;
+# } then {
+#     (condition: $cond, action: $action, environment: $env) isa implication;
+# };
+
+
+rule action-apply-post-conditions-of-vulnerability-run-in-wl:
+when {
+    $action (target: $vuln) isa action;
+    (thing: $vuln, container: $env) isa contains;
+    $cond isa run-in-workload-condition;
+    $env isa pod;
+    $has-implication (source: $vuln, condition: $cond) isa has-post-condition;
+} then {
+    (action: $action, environment: $env) isa run-in-workload;
+};
+
+rule action-apply-privilege-level-of-vulnerability-run-in-wl:
+when {
+    $action (target: $vuln) isa action;
+    (thing: $vuln, container: $env) isa contains;
+    $cond isa run-in-workload-condition, has privilege-level $priv-level;
+    $env isa pod;
+    $has-implication (source: $vuln, condition: $cond) isa has-post-condition;
+    $run-in-workload (action: $action, environment: $env) isa run-in-workload;
+} then {
+    $run-in-workload has $priv-level; 
+};
+
+rule exec-in-workload-can-be-used-for-malicious-code:
+when {
+    $run-in-workload (action:$action, environment:$env) isa run-in-workload;
+    $env isa pod;
+} then {
+    (target: $env, requires: $run-in-workload) isa run-malicious-code-in-workload;
+};
+
+
+rule exec-in-workload-can-lead-to-dos:
+when {
+    $run-in-workload (action:$action, environment:$env) isa run-in-workload;
+    $env isa pod;
+} then {
+    (target: $env, requires: $run-in-workload) isa denial-of-service;
+};
+
+rule exec-in-workload-gives-access-to-contained-assets:
+when {
+    $run-in-workload (environment: $pod) isa run-in-workload;
+    $pod has mounts-sa-token == true;
+    (user: $pod, object: $sa) isa usage;
+    $sa isa service-account;
+    (user: $sa, $secret) isa secret-usage;
+    $secret isa secret;
+} then {
+    (environment: $pod, asset: $secret, requires: $run-in-workload) isa access-to-credentials;
+};
+
+
+rule impersonate-subject-if-token-is-accessible:
+when {
+    $access-to-credentials (environment: $pod, asset: $credentials) isa access-to-credentials;
+    # $sa-has-token ($owner: $sa, asset: $token) isa has-asset;
+    (user: $sa, object: $credentials) isa secret-usage;
+    $sa isa service-account, has name $sa-name;
+    (environment: $pod) isa run-in-workload;
+} then {
+    (target: $sa, requires: $access-to-credentials) isa impersonate-subject;
+};
+
+
+rule read-permissions-of-impersonated-subject-are-transitive:
+when {
+    $impersonate (target: $subject) isa impersonate-subject;
+    $subject has ns $subject-ns;
+    $subject-cap (subject: $subject, resource: $resource) isa read-privilege;
+    
+    $ns isa namespace, has name $ns-name;
+    $ns-name == $subject-ns;
+} then {
+    (requires: $impersonate, thing: $resource, environment: $ns) isa can-read;    
+};
+
+rule write-permissions-of-impersonated-subject-are-transitive:
+when {
+    $impersonate (target: $subject) isa impersonate-subject;
+    $subject has ns $subject-ns;
+    $subject-cap (subject: $subject, resource: $resource) isa write-privilege;
+
+    $ns isa namespace, has name $ns-name;
+    $ns-name == $subject-ns;
+} then {
+    (requires: $impersonate, thing: $resource, environment:$ns) isa can-write;    
+};
+
+rule execute-permissions-of-impersonated-subject-are-transitive:
+when {
+    $impersonate (target: $subject) isa impersonate-subject;
+    $subject has ns $subject-ns;
+    $subject-cap (subject: $subject, resource: $resource) isa execute-privilege;
+
+    $ns isa namespace, has name $ns-name;
+    $ns-name == $subject-ns;
+} then {
+    (requires: $impersonate, thing: $resource, environment: $ns) isa can-execute;    
+};
+
+
+rule create-permissions-of-impersonated-subject-are-transitive:
+when {
+    $impersonate (target: $subject) isa impersonate-subject;
+    $subject has ns $subject-ns;
+    $subject-cap (subject: $subject) isa create-privilege;
+
+    $ns isa namespace, has name $ns-name;
+    $ns-name == $subject-ns;
+} then {
+    (requires: $impersonate, environment:$ns) isa can-create;    
+};
+
+rule resource-type-of-transitive-permissions-are-also-transitive:
+when {
+    $cap (requires:$impersonate) isa capability;
+    $impersonate (target: $subject) isa impersonate-subject;
+    $subject-cap (subject: $subject) isa privilege, has resource-type $resource-type;
+} then {
+    $cap has $resource-type;
+};
+
+
+# TODO: should semantics of the secret type by differentiated by a rule (e.g. it's a secret for a DB) 
+# so it's possible to say it's a credential
+# or maybe use simple rule based on the name (e.g. it contains 'password')
+# TODO the k8s object is not the credential, but the data within!
+rule execute-capability-gives-access-to-credentials:
+when {
+    $sec-usage (user: $pod, object: $secret) isa secret-usage;
+    $pod isa pod;
+    $can-exec (thing: $pod) isa can-execute;
+} then {
+    (environment:$pod, thing: $secret, requires: $can-exec) isa access-to-credentials;
+};
+

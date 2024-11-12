@@ -1,0 +1,316 @@
+define
+
+role-ref sub attribute, value string;
+resource-name sub attribute, value string;
+verb sub attribute, value string, regex "^(get|list|watch|use|create|update|patch|delete|deletecollection|impersonate|bind|escalate|[*]|describe)$";
+can sub attribute, value string;  #  the action a role can perform in the privilege relation
+
+service-account sub k8s-ns-object,
+    owns automount-service-account-token,
+    owns secret-name,
+    plays usage:object,
+    plays reference:referrer,
+    plays usage:user,  # the service account itself uses the secret token 
+    plays binding:subject,
+    plays privilege:subject;  # granted by RBAC rules
+
+role sub k8s-ns-object,
+    plays ruleset:owner,  # rbac rules
+    plays role-binding:role-ref;
+
+cluster-role sub k8s-object,
+    plays ruleset:owner,  # rbac rules
+    plays role-binding:role-ref;
+
+role-binding sub binding,
+    owns ns,
+    relates role-ref;
+
+
+
+rbac-rule sub entity,
+    owns api-group,
+    owns resource-type,
+    owns resource-name,
+    owns verb,
+    plays ruleset:entry;
+
+# Privileges are the effect of RBAC rules
+privilege sub relation,
+    owns can,
+    owns ns,   # is the scope of the privilege
+    owns resource-type,
+    relates subject,
+    relates resource,
+    relates scope;
+    # relates resource;type;
+    # owns resource,
+    # owns resource-name;
+
+
+read-privilege sub privilege;
+write-privilege sub privilege;
+execute-privilege sub privilege;
+
+create-privilege sub write-privilege;
+
+execute-in-container sub execute-privilege;
+execute-on-host sub execute-privilege;
+
+
+
+# rule role-bindings-connect-roles-to-serviceaccounts:
+# when {
+# 	$r isa role;
+# 	$sa isa service-account;
+# 	$rb isa role-binding;
+# }  then {
+    
+# };
+
+
+
+# rule ns-policies-provide-read-privilege:
+# when {
+# 	$r isa role;
+# 	$rb (subject: $subj, role-ref:$r) isa role-binding, has ns $ns;
+# 	$rbac-rule isa rbac-rule, has resource-type $pol-res, has verb $v;
+# 	(container: $r, thing: $rbac-rule) isa contains;
+# 	$e isa k8s-ns-object, has resource-type $res-type;
+# 	$res-type == $pol-res;
+# 	$v like "(get|list|watch)";
+# } then {
+# 	(subject: $subj, resource: $e) isa read-privilege;
+# };
+
+# rule ns-policies-provide-write-privilege:
+# when {
+# 	$r isa role;
+# 	$rb (subject: $subj, role-ref:$r) isa role-binding, has ns $ns;
+# 	$rbac-rule isa rbac-rule, has resource-type $pol-res, has verb $v;
+# 	(container: $r, thing: $rbac-rule) isa contains;
+# 	$e isa k8s-ns-object, has resource-type $res-type;
+# 	$res-type == $pol-res;
+# 	$v like "(create|update|patch|delete|deletecollection)";
+# } then {
+# 	(subject: $subj, resource: $e) isa read-privilege;
+# };
+
+
+rule ns-policies-provide-read-privilege:
+when {
+    $r isa role, has ns $role-ns;
+    $rb (subject: $subj, role-ref:$r) isa role-binding;
+    $rbac-rule isa rbac-rule, has resource-type $pol-res, has verb $verb;
+    not { $rbac-rule has resource-name $res-name; }; 
+    (owner: $r, entry: $rbac-rule) isa ruleset;
+    $obj isa k8s-ns-object, has ns $obj-ns, has resource-type $res-type;
+    $res-type == $pol-res;
+    $role-ns == $obj-ns;
+    $verb like "(get|list|watch)";
+    $ns isa namespace, has name $ns-name;
+    $ns-name == $role-ns;
+} then {
+    (subject: $subj, resource: $obj, scope:$ns) isa read-privilege;
+};
+
+# rule ns-policies-provide-read-privilege:
+# when {
+#     $r isa role, has ns $role-ns;
+#     $rb (subject: $subj, role-ref:$r) isa role-binding;
+#     $rbac-rule isa rbac-rule, has resource-type $pol-res, has verb $verb;
+#     not { $rbac-rule has resource-name $res-name; }; 
+#     (owner: $r, entry: $rbac-rule) isa ruleset;
+#     $role-ns == $ens;
+#     $verb like "(get|list|watch)";
+#     $ns isa namespace, has name $ns-name;
+#     $ns-name == $role-ns;
+# } then {
+#     (subject: $subj, scope:$ns) isa read-privilege;
+# };
+
+# rule read-privilege-references-k8s-objects:
+# when {
+#    $privilege (scope: $ns, subject: $subj) isa read-privilege;
+#     $ns isa namespace, has name $ns-name;
+#     $r isa role, has ns $role-ns;
+#     $role-ns == $ns-name;
+#     $rb (subject: $subj, role-ref:$r) isa role-binding;
+#     (owner: $r, entry: $rbac-rule) isa ruleset;
+#     $rbac-rule isa rbac-rule, has resource-type $pol-res, has verb $verb;
+
+#     $obj isa k8s-ns-object, has ns $ens, has resource-type $res-type;
+#     $res-type == $pol-res;
+#     $ens == $ns-name;
+# } then {
+#     $privilege (resource:$obj) isa read-privilege;
+# };
+
+
+rule ns-policies-provide-write-privilege:
+when {
+    $r isa role, has ns $role-ns;
+    $rb (subject: $subj, role-ref:$r) isa role-binding;
+    $rbac-rule isa rbac-rule, has resource-type $pol-res, has verb $verb;
+    not { $rbac-rule has resource-name $res-name; }; 
+    (owner: $r, entry: $rbac-rule) isa ruleset;
+    $e isa k8s-ns-object, has ns $ens, has resource-type $res-type;
+    $res-type == $pol-res;
+    $role-ns == $ens;
+    $verb like "(update|patch|delete|deletecollection)";
+    $ns isa namespace, has name $ns-name;
+    $ns-name == $role-ns;
+} then {
+    (subject: $subj, resource: $e, scope: $ns) isa write-privilege;
+};
+
+rule ns-policies-provide-create-privilege:
+when {
+    $role isa role, has ns $role-ns;
+    $rb (subject: $subj, role-ref:$role) isa role-binding;
+    $rbac-rule isa rbac-rule, has resource-type $pol-res, has verb $verb;
+    (owner: $role, entry: $rbac-rule) isa ruleset;
+    not { $rbac-rule has resource-name $res-name; }; 
+    $verb like "(create)";
+    not { $pol-res like ".*/exec";};
+    $ns isa namespace, has name $ns-name;
+    $ns-name == $role-ns;
+} then {
+    (subject: $subj, scope:$ns) isa create-privilege;
+};
+
+
+# sadly, it's not possible to add an attribute with the relation, so a dedicated rule is necessary
+rule privileges-have-resource-types:
+when {
+    $priv (subject: $subj) isa privilege;
+    $rb (subject: $subj, role-ref:$role) isa role-binding;
+    $role isa role;
+    (owner: $role, entry: $rbac-rule) isa ruleset;
+    $rbac-rule isa rbac-rule, has resource-type $pol-res, has verb $verb;
+    not { $pol-res like ".*/exec";};
+} then {
+    $priv has $pol-res;
+};
+
+rule ns-policies-to-exec-subresource-provide-execute-privilege:
+when {
+    $r isa role, has ns $role-ns;
+    $rb (subject: $subj, role-ref:$r) isa role-binding;
+    $rbac-rule isa rbac-rule, has resource-type $pol-res;
+    not { $rbac-rule has resource-name $res-name; }; 
+    (owner: $r, entry: $rbac-rule) isa ruleset;
+    $e isa k8s-ns-object, has ns $ens, has resource-type $res-type;
+    $pol-res == "pods/exec";
+    $res-type == "pods";
+    $role-ns == $ens;
+} then {
+    (subject: $subj, resource: $e) isa execute-privilege;
+};
+
+rule ns-policies-provide-privilege-all-resources:
+when {
+    $r isa role, has ns $role-ns;
+    $rb (subject: $subj, role-ref:$r) isa role-binding;
+    $rbac-rule isa rbac-rule, has resource-type "*";
+    not { $rbac-rule has resource-name $res-name; }; 
+    (owner: $r, entry: $rbac-rule) isa ruleset;
+    $e isa k8s-ns-object, has ns $ens;
+    $role-ns == $ens;
+    # $v like "(bind|escalate|use|impersonate)";
+} then {
+    (subject: $subj, resource: $e) isa read-privilege;
+};
+
+
+rule ns-policies-provide-privilege-to-named-resource:
+when {
+    $r isa role, has ns $role-ns;
+    $rb (subject: $subj, role-ref:$r) isa role-binding;
+    $rbac-rule isa rbac-rule, has resource-type $pol-res, has resource-name $res-name;
+    (owner: $r, entry: $rbac-rule) isa ruleset;
+    $e isa k8s-ns-object, has resource-type $res-type, has name $n, has ns $ens;
+    $res-name == $n;
+    $res-type == $pol-res;
+    $role-ns == $ens;
+    # $v like "(bind|escalate|use|impersonate)";
+} then {
+    (subject: $subj, resource: $e) isa read-privilege;
+};
+
+
+
+rule ns-policies-provide-privilege-all-named-resources:
+when {
+    $r isa role, has ns $role-ns;
+    $rb (subject: $subj, role-ref:$r) isa role-binding;
+    $rbac-rule isa rbac-rule, has resource-type "*", has resource-name $res-name;
+    (owner: $r, entry: $rbac-rule) isa ruleset;
+    $e isa k8s-ns-object, has ns $ens;
+    $res-name == $n;
+    $role-ns == $ens;
+    # $v like "(bind|escalate|use|impersonate)";
+} then {
+    (subject: $subj, resource: $e) isa read-privilege;
+};
+
+
+
+# rule cluster-policies-provide-privilege:
+# when {
+# 	$r isa role;
+# 	$rb (subject: $subj, role-ref:$r) isa role-binding;
+# 	not {$rb has has ns $ns;};  # referencing non-namespaced resources must not have a namespace
+# 	$rbac-rule isa rbac-rule, has resource-type $pol-res, has verb $v;
+# 	not {$rbac-rule has resource-name; };  # specified resource-names act as white list 
+# 	(owner: $r, entry: $rbac-rule) isa ruleset;
+# 	$e isa k8s-object, has resource-type $res-type;
+# 	$res-type == $pol-res;
+# 	# $v like "(bind|escalate|use|impersonate)";
+# } then {
+# 	(subject: $subj, resource: $e) isa read-privilege;
+# };
+
+# rule cluster-policies-provide-privilege-to-named-resource:
+# when {
+# 	$r isa role;
+# 	$rb (subject: $subj, role-ref:$r) isa role-binding;
+# 	not {$rb has has ns $ns;};  # referencing non-namespaced resources must not have a namespace
+# 	$rbac-rule isa rbac-rule, has resource-type $pol-res, has verb $v;
+# 	not {$rbac-rule has resource-name; };  # specified resource-names act as white list 
+# 	(owner: $r, entry: $rbac-rule) isa ruleset;
+# 	$e isa k8s-object, has resource-type $res-type;
+# 	$res-type == $pol-res;
+# 	# $v like "(bind|escalate|use|impersonate)";
+# } then {
+# 	(subject: $subj, resource: $e) isa read-privilege;
+# };
+
+
+
+rule pod-inherits-capabilities-of-mounted-sa:
+when {
+    $p isa pod, has mounts-sa-token true;
+    (user: $p, object: $sa) isa usage;
+    $cap (subject: $sa, resource: $r) isa read-privilege;
+} then {
+    (subject: $p, resource: $r) isa read-privilege;
+};
+
+rule pod-inherits-capabilities-of-mounted-sa:
+when {
+    $p isa pod, has mounts-sa-token true;
+    (user: $p, object: $sa) isa usage;
+    $cap (subject: $sa, resource: $r) isa write-privilege;
+} then {
+    (subject: $p, resource: $r) isa write-privilege;
+};
+
+rule pod-inherits-capabilities-of-mounted-sa:
+when {
+    $p isa pod, has mounts-sa-token true;
+    (user: $p, object: $sa) isa usage;
+    $cap (subject: $sa, resource: $r) isa execute-privilege;
+} then {
+    (subject: $p, resource: $r) isa execute-privilege;
+};

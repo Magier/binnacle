@@ -1,0 +1,863 @@
+define
+
+
+cluster sub entity,
+    owns name,
+    owns cluster-version,
+    plays privilege:scope,
+    plays implication:environment;
+
+
+
+runs-on sub relation,
+    relates workload,
+    relates node;
+
+part-of sub relation,
+    relates part,
+    relates whole;
+
+micro-service sub entity,
+    plays part-of:whole;
+
+
+ownership sub relation,
+    relates owner,
+    relates asset;
+
+ownership-reference sub attribute, value string,
+    owns name,
+    owns kind;
+
+
+k8s-object sub entity, 
+    abstract,
+    # owns api-version,
+    owns kind,
+    owns resource-type,
+    # owns meta;
+    owns name,
+    owns annotation,
+    owns label,
+    owns ownership-reference,
+    plays part-of:part,
+    plays action:target,
+    plays implication:thing,
+    plays reference:object,
+    plays label-selection:target,
+    plays label-selection-match:target,     # helper relaiton for 'label-selection'
+    plays no-label-selection-match:target,  # helper relation for 'label-selection'
+    plays privilege:resource;
+
+
+ip-value sub attribute, value long;
+ip-address-base sub attribute, abstract,
+    value string,
+    owns ip-value;  # ip as integer for artihmetic (e.g. CIDR) 
+ip-address sub ip-address-base;
+internal-ip sub ip-address-base;
+external-ip sub ip-address-base;
+external-dns sub attribute, value string;
+internal-dns sub attribute, value string;
+host-network sub attribute, value boolean;
+hostname sub attribute, value string;
+kernel-version sub attribute, value string;
+kubelet-version sub attribute, value string;
+kube-proxy-version sub attribute, value string;
+os-image sub attribute, value string;
+os sub attribute, value string, regex "^(linux|windows)$";
+
+
+cluster-node sub k8s-object,
+    owns version,
+    owns pod-cidr,
+    owns internal-ip,
+    owns internal-dns,
+    owns external-ip,
+    owns external-dns,
+    owns hostname,
+    owns kernel-version,
+    owns kubelet-version,
+    owns kube-proxy-version,
+    owns os-image,
+    owns os,
+    owns node-port,
+    plays network-relation:source,
+    plays network-relation:destination,
+    plays runs-on:node;
+
+
+k8s-ns-object sub k8s-object,
+    owns ns,
+    plays contains:thing;
+
+
+reference sub relation,
+    relates referrer,
+    relates object;
+
+secret-reference sub reference;
+
+label-selection sub relation,
+    relates selector,
+    relates target;
+pod-selection sub label-selection;
+namespace-selection sub label-selection;
+
+
+usage sub relation,
+    relates user,
+    relates object;
+secret-usage sub usage;
+
+binding sub relation,
+    owns name,
+    relates subject;
+
+ruleset sub relation,
+    relates entry,
+    relates owner;
+
+
+namespace sub k8s-object,
+    owns ns,  # temporary workaround so it can be queried as part of then environment relation in a implication
+    plays contains:container,
+    plays privilege:scope,
+    plays implication:environment;
+
+
+host-network sub attribute, value boolean;
+host-pid sub attribute, value boolean;
+host-ipc sub attribute, value boolean;
+host-users sub attribute, value boolean;  # requires K8s v1.25+
+run-as-user sub attribute, value long;
+run-as-group sub attribute, value long;
+run-as-non-root sub attribute, value boolean;
+shared-process-namespace sub attribute, value boolean;
+supplemental-group sub attribute, value long;
+fs-group sub attribute, value long;
+fs-group-change-policy sub attribute, value string;
+sysctl sub attribute, value string;
+
+pod-security-context sub attribute,
+    value string,
+    owns host-network,
+    owns host-pid,
+    owns host-ipc,
+    owns host-users,
+    owns run-as-user,
+    owns run-as-group,
+    owns run-as-non-root,
+    owns shared-process-namespace,
+    owns supplemental-group,
+    owns fs-group,
+    owns fs-group-change-policy,  # this actually maps to k8s.PodFSGroupChangePolicy
+    # se_linux_options: list[str] | None = None  # this actually maps to k8s.SELinuxOptions
+    owns sysctl;
+    # seccomp_profile: str | None = None
+
+
+host-network sub attribute, value boolean;
+host-pid sub attribute, value boolean;
+host-ipc sub attribute, value boolean;
+host-users sub attribute, value boolean;  # requires K8s v1.25+
+run-as-user sub attribute, value long;
+run-as-group sub attribute, value long;
+run-as-non-root sub attribute, value boolean;
+shared-process-namespace sub attribute, value boolean;
+supplemental-group sub attribute, value long;
+fs-group sub attribute, value long;
+fs-group-change-policy sub attribute, value string;
+sysctl sub attribute, value string;
+
+pod-security-context sub attribute,
+    value string,
+    owns host-network,
+    owns host-pid,
+    owns host-ipc,
+    owns host-users,
+    owns run-as-user,
+    owns run-as-group,
+    owns run-as-non-root,
+    owns shared-process-namespace,
+    owns supplemental-group,
+    owns fs-group,
+    owns fs-group-change-policy,  # this actually maps to k8s.PodFSGroupChangePolicy
+    # se_linux_options: list[str] | None = None  # this actually maps to k8s.SELinuxOptions
+    owns sysctl;
+    # seccomp_profile: str | None = None
+
+is-active sub attribute, value boolean;
+
+pod sub k8s-ns-object,
+    owns service-account-name,
+    owns automount-service-account-token,
+    owns image-pull-secret,
+    owns volume-name,
+    owns mounts-sa-token,
+    owns pod-security-context,
+    owns node-name,
+    owns pod-phase,
+    owns host-network,
+    owns host-ip,
+    owns pod-ip,
+    owns container-port,  # exposed and inferred from its containers
+    owns is-active,
+    plays usage:user,
+    plays manages:resource,
+    plays contains:container,
+    plays implication:environment,
+    plays privilege:subject,  # inherited via SA
+    plays reference:referrer,
+    plays selected-by-network-policy:pod,
+    plays network-relation:source,
+    plays network-relation:destination,
+    plays runs-on:workload;
+
+
+workload sub k8s-ns-object,
+    abstract,
+    owns selector,
+    plays label-selection:selector,
+    plays no-label-selection-match:selector,
+    plays manages:manager;  # manages pods or other workloads
+
+
+deployment sub workload,
+    owns replicas;
+    # owns replicaset, # NewReplicaSet, OldReplicaSets
+
+replica-set sub workload,
+    owns replicas,
+    plays manages:resource;  # managed-by a deployment
+
+
+service-name sub attribute, value string;  # headless service required by STS
+stateful-set sub workload,
+    owns replicas,
+    owns service-name;
+
+
+daemon-set sub workload;
+
+node-port sub attribute, 
+    value long,
+    plays route:source-port,
+    plays route:target-port;
+
+app-protocol sub attribute, value string;
+service-port sub port,
+    owns protocol,
+    owns node-port,
+    owns target-port,
+    owns app-protocol;
+
+service sub k8s-ns-object,
+    owns service-type,
+    owns cluster-ip,
+    owns service-port,
+    owns selector,
+    plays network-relation:source,
+    plays network-relation:destination,
+    plays label-selection:selector,
+    plays no-label-selection-match:selector;
+    # plays ingress-rule:backend;
+
+
+
+secret-data sub attribute, value string;
+
+secret sub k8s-ns-object,
+    owns secret-type,
+    owns secret-data,     		# TODO is the secret-data considered an asset? Maybe add a classification
+    owns service-account-name,   # required only present if secret-type is "kubernetes.io/service-account-token"
+    plays usage:object,
+    plays access-to-credentials:asset;  #  TODO this must be decoupled from the k8s object
+
+
+privileged sub attribute, value boolean;
+container-security-context sub attribute, 
+    value string,
+    owns privileged;
+
+container sub entity,
+    owns container-name,
+    owns image-name,
+    owns image-pull-policy,
+    owns env-var,
+    owns env-from-source,
+    owns volume-mount-name,
+    owns container-port,
+    owns command,
+    owns args,
+    owns container-security-context,
+     # owns resource-limit,
+     # owns image-pull-policy
+     # owns entrypoint
+    plays reference:referrer,
+    plays contains:thing,
+    plays runs-on:workload,
+    plays network-relation:source,
+    plays network-relation:destination,
+    plays usage:user,
+    plays volume-mount:user,
+    plays privilege:scope;
+# Containers can easily communicate with other containers in the same pod as though they were on the same machine while maintaining a degree of isolation from others.
+
+
+host-path-type sub attribute, value string, regex "^(Directory|DirectoryOrCreate|FileOrCreate|File|Socket|CharDevice|BlockDevice)$";
+host-path sub attribute, value string,
+    owns host-path-type;
+
+volume sub entity,
+    owns name,
+    owns host-path,   # is part of HostPathVolumeSource
+    # owns claim-name,
+#    owns config-map-name,
+    owns secret-volume-source,
+    owns projected-volume-source,
+    owns tmp-volume-source,
+    plays reference:object,
+    # plays reference:referrer,  	# referrs volume sources
+    # plays volume-source:volume,
+    plays volume-mount:volume;  # referred to by a volume mount
+    
+
+# volume-source sub attribute, value string, # not sure what value will be
+# 	abstract;
+
+volume-source sub attribute, abstract, value string;
+    # relates volume,
+    # relates source;
+tmp-volume-source sub volume-source, value string;
+
+volume-projection sub attribute, abstract, value string;
+tmp-volume-projection sub volume-projection;
+
+
+# source-type sub attribute, value string;
+
+secret-volume-source sub volume-source, value string,
+    owns secret-name,  # optional
+    owns default-mode,  # optional (i.e. DefaultMode)
+    owns secret-is-optional,  # optional 
+    # plays volume-source:source,
+    plays reference:referrer;
+
+projected-volume-source sub volume-source, value string,
+    owns default-mode,
+    owns service-account-token-projection,
+    owns tmp-volume-projection,
+    owns secret-projection;
+    # owns configmap-projection,  # not yet supported
+    # owns downward-api-projection
+
+service-account-token-projection sub volume-projection,
+    owns audience,   # optional; A recipient of the token must identify itself with an identifier specified in the audience of the token, and otherwise should reject the token.
+    owns path,   
+    owns expiration-seconds,
+    plays usage:user;
+
+
+secret-projection sub volume-projection, 
+    owns secret-name,
+    owns item,   # list of KeyToPath objects, with each `key`, `path`, and `mode`
+    owns secret-is-optional,
+    plays reference:referrer;
+
+
+audience sub attribute, value string;
+expiration-seconds sub attribute, value long;
+item sub attribute, value string;
+
+
+
+rule secret-volume-source-references-secrets:
+when {
+    $svs isa secret-volume-source, has secret-name $sn;
+    # $ref plays secret-reference:referrer;
+    $s isa secret, has name $n;
+    $sn == $n;  
+} then {
+    (referrer: $svs, object: $s) isa secret-reference;
+};
+
+
+volume-mount sub relation,
+    owns name,   # must be a valid volume name
+    owns is-read-only,
+    owns mount-path,
+    owns sub-path,
+    owns sub-path-expr,
+    # items
+    relates user,
+    relates volume;
+    # owns mount-propagation,
+
+
+user sub entity,
+    owns name,
+    plays binding:subject,
+    plays privilege:subject;
+
+group sub entity,
+    owns name,
+    plays binding:subject,
+    plays privilege:subject;
+
+
+host-ip sub ip-address-base;
+pod-ip sub ip-address-base;
+
+cluster-version sub attribute, value string;
+version sub attribute, value string;
+node-name sub attribute, value string;
+# api-version sub attribute, value string;
+kind sub attribute, value string;
+# meta sub attribute, value string;  # todo: use object here?
+# uid sub attribute, value string;
+ns sub attribute, value string;
+# name sub attribute, value string, regex "^(?![0-9]+$)(?!-)[a-z0-9-]{,63}(?<!-)$";  # add '.' as valid symbol; source: https://stackoverflow.com/questions/2063213/regular-expression-for-validating-dns-label-host-name
+name sub attribute, value string;
+# dns-name sub attribute, value string, regex "^(?![0-9]+$)(?!-)[a-z0-9-]{,253}(?<!-)$";
+status sub attribute, value string;
+label sub attribute, value string,
+    owns key,
+    owns data;
+
+key sub attribute, value string;
+data sub attribute, value string;
+
+annotation sub attribute, value string;
+pod-phase sub attribute, value string, regex "^(Pending|Running|Succeeded|Failed|Unknown)$";
+replicas sub attribute, value long;
+
+label-selector sub attribute, value string, abstract;
+selector sub label-selector, value string;
+pod-selector sub label-selector;
+namespace-selector sub label-selector;
+
+service-type sub attribute, value string;
+service-name sub attribute, value string;
+cluster-ip sub attribute, value string;
+service-account-name sub attribute, value string;
+
+port-name sub attribute, value string;
+port-number sub attribute, value long;
+port sub attribute, value string,    # "<port-number>/<protocol>""
+    abstract,
+    owns port-name, 
+    owns port-number,
+    plays route:target-port,
+    plays route:source-port;
+
+target-port sub port;
+
+container-port sub port, value string,
+    owns protocol,
+    owns host-port-number,
+    owns host-ip;
+
+host-port-number sub attribute, value long;
+protocol sub attribute, value string;
+
+matched-label sub attribute, value string;
+automount-service-account-token sub attribute, value boolean;
+subject sub attribute, value string;
+description sub attribute, value string;
+mounts-sa-token sub attribute, value boolean;
+
+host sub attribute, value string;
+#port sub attribute, value long;
+path sub attribute, value string;
+number sub attribute, value long;
+
+secret-name sub attribute, value string;
+image-pull-secret sub attribute, value string;
+
+api-group sub attribute, value string;
+# resource sub attribute, value string;
+resource-type sub attribute, value string;
+secret-type sub attribute, value string;
+
+container-name sub attribute, value string;
+command sub attribute, value string;
+args sub attribute, value string;
+volume-name sub attribute, value string;
+volume-mount-name sub attribute, value string;
+mount-path sub attribute, value string;
+sub-path sub attribute, value string;
+sub-path-expr sub attribute, value string;
+is-read-only sub attribute, value boolean;
+image-name sub attribute, value string;
+image-pull-policy sub attribute, value string, regex "^(Always|Never|IfNotPresent)$";
+var-value sub attribute, value string;
+env-var sub attribute,
+    value string,     # representation of the environment variable
+    owns name,
+    owns var-value,   # var value or secret-key-ref are mutually exclusive [XOR]
+    owns value-from;
+
+value-from sub attribute,
+    value string,
+    owns secret-key-ref;
+    # owns config-map-key-ref,
+    # owns field-ref, 
+    # owns resource-field-ref;
+
+env-from-source sub attribute,
+    value string,
+    owns prefix,  # this will affect the resulting environment variable in the container
+    owns secret-env-source
+    # owns config-map-ref;  # TODO: TR-2751
+    ;
+
+secret-key sub attribute, value string;
+secret-key-ref sub attribute,  # used by EnvVarSource
+    value string,
+    owns secret-name,
+    owns secret-key,
+    owns is-optional,
+    plays reference:referrer;
+
+secret-env-source sub attribute,   # used by EnvFromSource (-> SecretEnvSource)
+    value string,
+    owns is-optional,
+    plays reference:referrer;
+
+is-optional sub attribute, value boolean;
+secret-is-optional sub attribute, value boolean;
+default-mode sub attribute, value string;
+claim-name sub attribute, value string;
+prefix sub attribute, value string;
+
+
+
+label-selection-match sub relation,
+    relates selector,
+    relates target;
+
+
+no-label-selection-match sub relation,
+    relates selector,
+    relates target;
+
+manages sub relation,
+    relates manager,
+    relates resource;
+
+# extract the negation condition for label-selection as a dedicated relation, because no nested negations are allowed 
+rule no-label-selection-match:
+when {
+    $pod isa pod;
+    $obj isa k8s-ns-object, has label-selector $selector;
+
+    not {
+        $pod has label $label;
+        $label == $selector;
+    };
+} then {
+    (selector: $obj, target:$pod) isa no-label-selection-match;
+};
+
+rule objects-select-pod-via-labels:
+when {
+    $pod isa pod, has label $label;
+    $obj isa k8s-object;
+    $obj has label-selector $sel;
+    $sel == $label;
+
+    # transformed all quantification for selector, because no nested negation is allowed (yet)
+    not {
+        $no-sel (target: $pod, selector: $obj) isa no-label-selection-match;
+    };
+} then {
+    (selector: $obj, target: $pod) isa label-selection;
+};
+
+
+rule workload-manage-pods:
+when {
+    $workload isa workload;
+    $pod isa pod;
+    (selector: $workload, target: $pod) isa label-selection;
+} then {
+    (manager: $workload, resource: $pod) isa manages;
+};
+
+# rule microservice-name-is-derived-by-recommended-label:
+# when {
+#     $obj isa k8s-ns-object, has label $label;
+#     $lbl has key "app.kubernetes.io/name", has data $lbl-data;
+# } then {
+#     $obj has microservice-name $lbl-data;
+# };
+
+# rule service-microservice-name-falls-back-to-pod-microservice-name:
+# when {
+#     $svc isa service, has ns "unguard";
+#     not { $svc has microservice-name $1; };
+#     (selector: $svc, target: $pod) isa label-selection;
+#     $pod isa pod, has name $pod-name, has microservic-name $ms-name;
+# } then {
+#     $svc has microservice-name $ms-name;
+# };
+
+# # TODO resolve ownerreference of pod to the top level object and use it's microservice name
+# #rule pod-microservice-name-falls-back-to-owner-name:
+# #when {
+# #} then {
+# #};
+
+rule pods-use-service-accounts:
+when {
+    $p isa pod, has service-account-name $pod-sa-name, has ns $pod-ns;
+    $sa isa service-account, has name $sa-name, has ns $sa-ns;
+    $pod-sa-name == $sa-name;
+    $pod-ns == $sa-ns;
+} then {
+    (user: $p, object: $sa) isa usage;
+};
+
+rule k8s-objects-with-ns-attr-are-namespaced:
+when {
+    $obj isa k8s-ns-object, has ns $ns-name;
+    $ns isa namespace, has name $name;
+    $name == $ns-name;
+} then {
+    (container: $ns, thing: $obj) isa contains;
+};
+
+
+rule containers-may-reference-services-via-env-vars:
+when {
+    $container isa container, has env-var $env-var;
+    $env-var has var-value $env-var-value;
+    $svc isa service, has name $svc-name;
+    $env-var-value == $svc-name;
+} then {
+    (referrer: $container, object: $svc) isa reference;
+};
+
+
+rule containers-references-are-transitive-to-pod:
+when {
+    (referrer: $container, object: $obj) isa reference;
+    $container isa container;
+    (container: $pod, thing: $container) isa contains;
+    $pod isa pod;
+} then {
+    (referrer: $pod, object: $obj) isa reference;
+};
+
+
+
+rule infer-pod-sa-token-usage:
+when {
+    $p isa pod, has ns $pod-ns;
+    $sa isa service-account, has ns $sa-ns;
+    $sa-ns == $pod-ns;
+    (user: $p, object: $sa) isa usage;
+    # CNF for of (either pod or referenced service account automount the SA token)
+    not { $p has automount-service-account-token false; };
+    not { $sa has automount-service-account-token false; };
+} then {
+    $p has mounts-sa-token true;
+};
+
+
+# ================ secret references/usages ===================
+
+# rule secret-are-referenced-by-attrs:
+# when {
+# 	$ref plays secret-reference:referrer;
+# 	$s isa secret, has name $sn;
+# 	$e isa $ref;
+# 	$e = $sn;  # note: the role-player itself is the value -> attr
+# } then {
+# 	(referrer: $e, object: $s) isa secret-reference;
+# };
+
+rule secret-key-ref-references-secrets:
+when {
+    $skr isa secret-key-ref, has secret-name $sn;
+
+    # $ref plays secret-reference:referrer;
+    $s isa secret, has name $n;
+    $sn == $n;  
+} then {
+    (referrer: $skr, object: $s) isa secret-reference;
+};
+
+rule secret-env-source-references-secrets:
+when {
+    $ses isa secret-env-source;
+    # $ref plays secret-reference:referrer;
+    $s isa secret, has name $n;
+    $ses == $n;  
+} then {
+    (referrer: $ses, object: $s) isa secret-reference;
+};
+
+rule secret-projection-references-secrets:
+when {
+    $sp isa secret-projection, has secret-name $sn;
+    # $ref plays secret-reference:referrer;
+    $s isa secret, has name $n;
+    $sn == $n;  
+} then {
+    (referrer: $sp, object: $s) isa secret-reference;
+};
+
+
+rule service-accounts-reference-secrets:
+when {
+    $s isa secret, has name $name;
+    $sa isa service-account, has secret-name $secret-name;
+    $name == $secret-name;
+} then {
+    (referrer: $sa, object: $s) isa secret-reference;
+};
+
+
+
+# Old mechanism until K8s v1.22; afterwards bound SA token is used via projected volume
+rule service-accounts-use-a-secret-token:
+when {
+    $s isa secret, has service-account-name $secret-sa-name, has ns $secret-ns;
+    $sa isa service-account, has name $sa-name, has ns $sa-ns;
+    $secret-sa-name == $sa-name;
+    $secret-ns == $sa-ns;
+} then {
+    (user: $sa, object: $s) isa secret-usage;
+};
+
+
+
+rule container-uses-secrets-via-env-var:
+when {
+    $c isa container, has env-var $ev;
+    $ev has value-from $env-value-from;
+    $env-value-from has secret-key-ref $sk-ref;
+    $s isa secret;
+    (referrer: $sk-ref, object: $s) isa secret-reference;
+} then {
+    (user: $c, object: $s) isa secret-usage;
+};
+
+rule container-uses-secrets-via-envfrom:
+when {
+    $c isa container, has env-from-source $evs;
+    $evs has secret-env-source $sk-src;
+    $s isa secret;
+    (referrer: $sk-src, object: $s) isa secret-reference;
+} then {
+    (user: $c, object: $s) isa secret-usage;
+};
+
+
+rule container-uses-secrets-via-projected-secret-volume-mount:
+when {
+    $c isa container;
+    $v isa volume, has projected-volume-source $pvs;
+    $pvs has secret-projection $sec-proj;
+    # $sec-proj has secret-name $sn;
+    $vm (user: $c, volume: $v) isa volume-mount;
+    $s isa secret;
+    (referrer: $sec-proj, object: $s) isa secret-reference;
+} then {
+    (user: $c, object: $s) isa secret-usage;
+};
+
+
+rule container-uses-secrets-via-volume-mount:
+when {
+    $c isa container;
+    $v isa volume, has secret-volume-source $svs;
+    $vm (user: $c, volume: $v) isa volume-mount;
+    $s isa secret;
+    (referrer: $svs, object: $s) isa secret-reference;
+} then {
+    (user: $c, object: $s) isa secret-usage;
+};
+
+
+rule image-pull-secret-reference-secrets:
+when {
+    $s isa secret, has name $name;
+    $sa isa k8s-object, has image-pull-secret $secret-name;
+    $name == $secret-name;
+} then {
+    (user: $sa, object: $s) isa secret-usage;
+};
+
+rule pod-abstacts-container-usage:
+when {
+    $p isa pod;
+    $c isa container;
+    (container: $p, thing: $c) isa contains;
+    (user: $c, object: $o) isa secret-usage;
+} then {
+    (user: $p, object: $o) isa secret-usage;
+};
+
+
+rule service-account-token-projection-uses-service-account:
+when {
+    $p isa pod;
+    $sa isa service-account;
+    (user: $p, object: $sa) isa usage;
+    $c isa container;
+    (container: $p, thing: $c) isa contains;
+    $v isa volume, has projected-volume-source $pvsrc;
+    (user: $c, volume: $v) isa volume-mount;
+    $pvsrc has service-account-token-projection $sa-token-proj;
+} then {
+    (user: $sa-token-proj, object: $sa) isa usage;
+};
+
+rule secret-volume-source-references-secrets:
+when {
+    $svs isa secret-volume-source, has secret-name $sn;
+    # $ref plays secret-reference:referrer;
+    $s isa secret, has name $n;
+    $sn == $n;  
+} then {
+    (referrer: $svs, object: $s) isa secret-reference;
+};
+
+
+
+# =================== Infrastructure =========================
+rule pods-run-on-nodes:
+when {
+    $node isa cluster-node, has name $node-name;
+    $pod isa pod, has node-name $target-node-name;
+    $target-node-name == $node-name;
+} then {
+    (node: $node, workload: $pod) isa runs-on;
+};
+
+
+rule transitive-container-run-on-node-assigned-to-containing-pod:
+when {
+    (node: $node, workload: $pod) isa runs-on;
+    $pod isa pod;
+    (container: $pod, thing: $container) isa contains;
+    $container isa container;
+} then {
+    (node: $node, workload: $container) isa runs-on;
+};
+
+
+rule running-pod-or-without-state-is-active:
+when {
+    $pod isa pod;
+    {
+        $pod has pod-phase "Running";
+    } or {
+        not {$pod has pod-phase $phase; };
+    };
+} then {
+    $pod has is-active true;
+};

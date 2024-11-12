@@ -1,0 +1,14 @@
+define
+
+contains sub relation,
+	relates thing,
+	relates container;
+
+min-ip-value sub attribute, value long;
+max-ip-value sub attribute, value long;
+
+cidr_base sub attribute, abstract, value string,
+    owns min-ip-value,
+    owns max-ip-value;
+cidr sub cidr_base;
+pod-cidr sub cidr_base;

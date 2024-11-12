@@ -1,0 +1,113 @@
+define
+# ignore intra-pod-communication for now, as these can't be configured at cluster level
+
+
+network-device sub entity,
+    owns ip-address,
+    plays network-relation:source,
+    plays network-relation:destination,
+    plays label-selection:target;  # for network policy
+
+
+# special entity acting as proxy for all kinds of 'external' communication
+internet sub network-device,
+    owns kind,
+    owns cidr; # maybe the public ip ranges will be useful at some point?
+
+selected-by-network-policy sub relation,
+    relates pod,
+    relates policy;
+
+selected-by-egress-policy sub selected-by-network-policy;
+selected-by-ingress-policy sub selected-by-network-policy;
+
+
+ingress-class-name sub attribute, value string;
+ingress-ruleset sub ruleset;
+
+# endpoints sub k8s-ns-object,
+#     owns address,
+#     owns port;
+
+
+
+service-backend-port sub port;
+
+
+ingress sub k8s-ns-object,
+    owns ingress-class-name,
+    plays network-relation:source,
+    plays network-relation:destination,
+    plays ruleset:owner;
+    # plays ingress-rule:routed-by;
+
+
+ingress-rule sub relation,
+    owns host,
+    plays ruleset:entry,
+    relates backend,
+    relates path;
+
+
+ingress-path-type sub attribute, value string, regex "^(Exact|Prefix|ImplementationSpecific)$";
+ingress-path sub entity,
+    owns path,
+    owns ingress-path-type,
+    plays ingress-rule:path;
+
+http-ingress-path sub ingress-path;
+
+
+backend-type sub attribute, value string, regex "^(Service|Resource)$";
+ingress-backend sub entity,
+    owns backend-type,
+    plays ingress-rule:backend;
+
+ingress-service-backend sub ingress-backend,
+    owns name,
+    owns service-backend-port;
+
+
+network-relation sub relation,
+    relates source,
+    relates destination;
+
+# use 'duck typing' to infer level of reachability
+can-reach sub network-relation,
+    # L3 layer covered by network-relation
+    # L4: port layer
+    owns container-port,
+    owns service-port,
+
+    # L7: app layer
+    owns path,
+    owns http-method;
+
+
+can-reach-on-l4 sub can-reach,
+    owns port-name,
+    owns port-number,
+    owns protocol;
+
+
+http-method sub attribute, value string;
+# can-reach-on-l7 sub can-reach-on-l4, 
+#     owns path,
+#     owns http-method;
+
+
+
+
+route sub network-relation,
+    relates source-port,
+    relates target-port;
+
+ingress-route sub route;
+service-route sub route;
+
+
+
+# exposed-route sub reference,
+#     relates source,
+#     relates target;
+
