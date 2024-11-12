@@ -131,5 +131,3 @@ def delete_project(
     uow: Annotated[AbstractDatabaseUnitOfWork, Depends(get_db_uow)],
 ) -> None:
     project_svc.delete_project(uow, project_name)
-
-

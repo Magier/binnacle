@@ -25,6 +25,12 @@ from binnacle.model.primitives import (
     RelationPart,
     Thing,
 )
+
+
+class Internet(Thing):
+    kind: str = "Internet"
+
+
 class Protocol(UppercaseStrEnum):
     TCP = auto()
     UDP = auto()
@@ -69,9 +75,7 @@ class IngressBackend(Thing):
 class IngressServiceBackend(IngressBackend):
     backend_type: str = BackendType.Service
     name: str
-    port: ServiceBackendPort = Field(
-        ..., alias="service-backend-port"
-    )  # the field can't be inherited, thus it has to be explicitely specified
+    port: ServiceBackendPort = Field(..., alias="service-backend-port")  # the field can't be inherited, thus it has to be explicitely specified
 
 
 class IngressResourceBackend(IngressBackend):
@@ -96,19 +100,13 @@ class IngressRule(Relation):
 class Ingress(NamespacedObject):
     kind: str = "Ingress"
     ingress_class_name: str | None = None
-    rules: Annotated[list[IngressRule] | None, {FieldConfig.IsRelatedBy: "ingress-ruleset:set"}] = Field(
-        None, alias="ingress-rule"
-    )
+    rules: Annotated[list[IngressRule] | None, {FieldConfig.IsRelatedBy: "ingress-ruleset:set"}] = Field(None, alias="ingress-rule")
     default_backend: IngressBackend | None = None  # handles requests that don't match any rules
 
 
 class NetworkRelation(Relation):
-    source: Annotated[
-        MicroService | Pod | ClusterNode | Service | Ingress, None, FieldConfig.Required, RelationPart.Source
-    ] = None
-    destination: Annotated[
-        MicroService | Pod | ClusterNode | Service | Ingress, None, FieldConfig.Required, RelationPart.Target
-    ] = None
+    source: Annotated[MicroService | Pod | ClusterNode | Service | Ingress, None, FieldConfig.Required, RelationPart.Source] = None
+    destination: Annotated[MicroService | Pod | ClusterNode | Service | Ingress, None, FieldConfig.Required, RelationPart.Target] = None
 
 
 class NamespaceSelector(LabelSelector):
@@ -170,7 +168,4 @@ class NetworkPolicy(NamespacedObject):
     ingress_rules: Annotated[  # rules are modeled via intermediare `ruleset`
         list[NetworkPolicyIngressRule] | None, {FieldConfig.IsRelatedBy: "network-policy-ruleset:set"}
     ] = None
-    egress_rules: Annotated[
-        list[NetworkPolicyEgressRule] | None, {FieldConfig.IsRelatedBy: "network-policy-ruleset:set"}
-    ] = None
-
+    egress_rules: Annotated[list[NetworkPolicyEgressRule] | None, {FieldConfig.IsRelatedBy: "network-policy-ruleset:set"}] = None

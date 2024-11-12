@@ -38,6 +38,7 @@ def is_db_ready(db_host: str, db_name: str) -> bool:
                 _db_name = session.database().name()
                 return _db_name == db_name
     except Exception as exc:
+        print("exception whin checking TypeDB availability", +exc)
         return False
 
 
@@ -343,9 +344,7 @@ def convert_objects(args: tuple[dict, dict]) -> list[model.Relation | model.Thin
     return resolved_objects
 
 
-def resolve_relations(
-    entities: list[model.Thing], relation_data: list[RelationData]
-) -> list[model.Relation | model.Thing]:
+def resolve_relations(entities: list[model.Thing], relation_data: list[RelationData]) -> list[model.Relation | model.Thing]:
     """Resolve the relation datas with references references to other things or relations
     to their actual instances, if present in the query result.
     All references are tried to be resolved in the order given as parameter.
@@ -460,9 +459,7 @@ def transform_insert_to_delete_queries(insert_queries: list[str]) -> list[str]:
 
         statements = [match_statement]
 
-        object_definitions = (
-            obj for s in insert_statement.split(";") if (obj := _find_object_definition(s)) is not None
-        )
+        object_definitions = (obj for s in insert_statement.split(";") if (obj := _find_object_definition(s)) is not None)
         statements.append(f"delete {'; '.join(object_definitions)};")
 
         delete_queries.append(" ".join(statements))

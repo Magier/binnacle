@@ -1,11 +1,13 @@
 import multiprocessing as mp
 import sys
 from enum import auto
+from pathlib import Path
 
 import typer
 from loguru import logger
 from strenum import UppercaseStrEnum
 
+sys.path.append(str(Path(__file__).resolve().parent))
 from binnacle.api.main import start as start_api_server
 from binnacle.services.cluster_service import get_default_context_name
 from binnacle.services.project_service import populate as populate_knowledge_base
