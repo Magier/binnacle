@@ -1,74 +1,28 @@
-[tool.poetry]
+[project]
 name = "binnacle"
 version = "0.1.0"
-description = ""
-authors = ["Markus Gierlinger <markus.gierlinger@dynatrace.com>"]
+description = "Add your description here"
 readme = "README.md"
-
-[tool.poetry.dependencies]
-python = ">=3.10,<4.0"
-typer = "^0.9.0"
-kubernetes = "^29.0.0"
-loguru = "^0.7.0"
-pydantic = "^2.6.4"
-plum-dispatch = "^2.1"
-tabulate = "^0.9.0"
-fastapi = "^0.110.0"
-uvicorn = "^0.29.0"
-networkx = "^3.2.1"
-strenum = "^0.4.15"
-matplotlib = "^3.8.3"
-pydot = "^1.4.2"
-diagrams = "^0.23.4"
-pydantic-settings = "^2.0.2"
-typing-extensions = "^4.7.1"
-typedb-driver = "^2.24.11"
-
-[tool.poetry.group.dev.dependencies]
-pytest = "^7.2.0"
-black = "^24.3.0"
-pre-commit = "^3.0.3"
-isort = "^5.12.0"
-flake8 = "^6.0.0"
-erdantic = "^0.6.0"
-httpx = "^0.24.1"
-
-
-[tool.black]
-line-length = 120
-
-[tool.isort]
-profile = "black"
-
-# section is used by tox.ini
-[tool.poetry.extras]
-test = ["pytest"]
-
-[tool.mypy]
-plugins = [
-  "pydantic.mypy"
+authors = ["Markus Gierlinger <ma.gierlinger+binnacle@gmail.com>"]
+requires-python = ">=3.12"
+dependencies = [
+    "fastapi>=0.115.5",
+    "kubernetes>=31.0.0",
+    "loguru>=0.7.2",
+    "plum-dispatch>=2.5.2",
+    "pydantic-settings>=2.6.1",
+    "pydantic>=2.9.2",
+    "strenum>=0.4.15",
+    "tabulate>=0.9.0",
+    "typedb-driver>=2.29.0",
+    "typer>=0.13.0",
+    "uvicorn>=0.32.0",
 ]
 
-[tool.pydantic-mypy]
-init_forbid_extra = true
-init_typed = true
-warn_required_dynamic_aliases = true
-warn_untyped_fields = true
-
-
-[tool.ruff]
-ignore = ["F811"]
-
-[tool.pytest.ini_options]
-testpaths = ["tests"]
-filterwarnings = [
-    "ignore::DeprecationWarning:typedb.*:"
+[dependency-groups]
+dev = [
+    "ruff>=0.7.3",
 ]
 
-[tool.poetry.scripts]
+[project.scripts]
 binnacle = "binnacle.cli:app"
-
-
-[build-system]
-requires = ["poetry-core"]
-build-backend = "poetry.core.masonry.api"
