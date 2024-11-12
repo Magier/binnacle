@@ -11,9 +11,6 @@ These resources are then migrated to a knowledge base, which has implicit rules 
 Once loaded, the cluster can be analyzed either using regular TypeQL queries or by building upon Binnacle to solve more sophisticated problems.
 
 
-> 🧪 Note: This is just a research project and not a product officially supported by Dynatrace!
-
-
 ## Requirements
 
 Currently, Binnacle loads the data directly from a Kubernetes cluster targeted by [kubectl](https://kubernetes.io/docs/reference/kubectl/).
