@@ -70,7 +70,7 @@ class K8sObject(Thing):
     # api_version: str
     resource_type: str | None = None  # for rbac and maybe other mechanisms
     annotations: dict[str, str] | None = Field(None, alias="annotation", exclude=True)
-    labels: dict[str, Label] = Field({}, alias="label")
+    labels: dict[str, Label] = Field({}, alias="lbl")
     ownership_references: list[OwnerReference] = []  # not present in K8s object if empty
     part_of: MicroService | None = Field(None, exclude=True)
 
@@ -134,14 +134,12 @@ class ClusterNode(K8sObject):
 
 class Namespace(K8sObject):
     kind: str = "Namespace"
-    ns: str | SpecialField | None = (
-        None  # temporary workaround so it can be queried as part of then environment relation in a implication
-    )
+    # ns: str | SpecialField | None = None  # temporary workaround so it can be queried as part of then environment relation in a implication
     objects: list[Thing] = []
 
     def __init__(self, **data):
         super().__init__(**data)
-        self.ns = self.name
+        # self.ns = self.name
 
     # class Config:
     #     fields = {"objects": {FieldConfig.Exclude: True}}

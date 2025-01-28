@@ -73,7 +73,7 @@ class AbstractDatabaseUnitOfWork(AbstractUnitOfWork):
 
 
 class TypeDbUnitOfWork(AbstractDatabaseUnitOfWork):
-    def __init__(self, db_name: str | None = None, kb: AbstractKnowledgeBase | None = None) -> None:
+    def __init__(self, db_name: str | None = None, db_user: str | None = None, db_password: str | None = None, kb: AbstractKnowledgeBase | None = None) -> None:
         """Instantiate the TypeDb specific Unit of Work.
         It manages the reference to the knowledge base.
         Either the knowledgbase name or direct a reference to knowledge base are required
@@ -86,7 +86,7 @@ class TypeDbUnitOfWork(AbstractDatabaseUnitOfWork):
             # if db_name is None:
             #     db_name = get_default_context_name()
             settings = get_settings()
-            kb = TypeDbKnowledgeGraph(db_name, url=settings.db_url)
+            kb = TypeDbKnowledgeGraph(db_name, url=settings.db_url, user=db_user, password=db_password)
         self.kb = kb
         self._staged_objects = []
         self.temporary_objects = []
@@ -163,10 +163,7 @@ class KubernetesUnitOfWork(AbstractUnitOfWork):
         if cluster is None:
             config = load_or_create_kubeconfig(config_path)
             if config.current_context is None or config.current_context == "":
-                raise RuntimeError(
-                    f"No valid cluster is set or pre-configured in kubeconfig at '{config_path}'. "
-                    "Please specify a target cluster with the --cluster argument."
-                )
+                raise RuntimeError(f"No valid cluster is set or pre-configured in kubeconfig at '{config_path}'. " "Please specify a target cluster with the --cluster argument.")
             cluster = config.current_context
         self.cluster = cluster
         self.namespaces: list[str] | None = None

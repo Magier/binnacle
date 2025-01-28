@@ -33,12 +33,14 @@ def reset(
 @app.command()
 def populate(
     db_name: str = typer.Option(get_default_context_name, "--db-name", envvar="DB_NAME"),
+    db_user: str = typer.Option(get_default_context_name, "--db-user", envvar="DB_USER"),
+    db_password: str = typer.Option(get_default_context_name, "--db-password", envvar="DB_PASSWORD"),
     cluster: str = typer.Option(get_default_context_name, "--cluster"),
     namespace: list[str] = typer.Option(None, "--ns", "-n"),
     infra: bool = typer.Option(False, "--infra", "-i"),
 ):
     try:
-        db_uow = TypeDbUnitOfWork(db_name)
+        db_uow = TypeDbUnitOfWork(db_name, db_user, db_password)
         settings = get_settings()
         typer.echo(f'Populate knowledge base "{db_name}"')
         k8s_uow = KubernetesUnitOfWork(settings.kubeconfig_path, cluster)

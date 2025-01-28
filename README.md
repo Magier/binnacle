@@ -20,7 +20,9 @@ For more sophisticated analysis, this also includes `Nodes`, `Secrets`, `Network
 
 ## Installation
 
-Install all dependencies using the command `poetry install`.
+_Prerequiset: please ensure [uv](https://docs.astral.sh/uv/) is installed._
+
+Install all dependencies using the command `uv install`.
 
 ### Context
 

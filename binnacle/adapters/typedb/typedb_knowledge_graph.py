@@ -58,11 +58,22 @@ def delete_database(driver: TypeDBDriver, db_name: str) -> None:
 
 
 class TypeDbKnowledgeGraph(AbstractKnowledgeBase):
-    def __init__(self, db_name: str, url: str):
+    def __init__(
+        self,
+        db_name: str,
+        url: str,
+        user: str,
+        password: str,
+    ):
         super().__init__(url)
         self.url = url
         self.db_name = db_name
-        self.session = None
+        self.credentials = Credentials(user, password)
+        # self.session = None
+
+    def _get_driver(self) -> Driver:
+        options = DriverOptions()
+        return TypeDB.core_driver(self.url, self.credentials, options)
 
     def get_databases(self) -> list[str]:
         """List all databases in TypeDB
@@ -70,8 +81,7 @@ class TypeDbKnowledgeGraph(AbstractKnowledgeBase):
         :param url: the URL to connect to TypeDB
         :return: a list of database names available in TypeDB
         """
-        driver = TypeDB.core_driver(self.url)
-
+        driver = self._get_driver()
         db_names = [db.name for db in driver.databases.all()]
         return db_names
 
@@ -83,25 +93,29 @@ class TypeDbKnowledgeGraph(AbstractKnowledgeBase):
             raise RuntimeError("Unable to initialize the knowledge base! Is the server running?")
 
     def delete_database(self, db_name: str) -> None:
-        driver = TypeDB.core_driver(self.url)
+        driver = self._get_driver()
         dbs = driver.databases
         if dbs.contains(db_name):
             dbs.get(db_name).delete()
 
     def write_schema(self, schema_path: str | Path, db_name: str) -> None:
-        driver = TypeDB.core_driver(self.url)
+        driver = self._get_driver()
         self._recreate_db(driver, db_name)
         schema_path = Path(schema_path)
 
         schema_files = schema_path.glob("**/*.tql") if schema_path.is_dir() else (schema_path,)
-
-        with driver.session(db_name, SessionType.SCHEMA) as session:
-            schema = consolidate_schemas(schema_files)
-            with session.transaction(TransactionType.WRITE) as write_tx:
-                write_tx.query.define(schema)
+        # TODO: remove after migrating to TQL v3
+        schema_files = [s for s in schema_files if not s.name.endswith("_old.tql")]
+        # with driver.session(db_name, SessionType.SCHEMA) as session:
+        schema = consolidate_schemas(schema_files)
+        try:
+            with driver.transaction(self.db_name, TransactionType.SCHEMA) as write_tx:
+                write_tx.query(schema).resolve()
                 write_tx.commit()
+        except TypeDBDriverException as exc:
+            raise exc
 
-    def _recreate_db(self, driver: TypeDBDriver, db_name: str) -> None:
+    def _recreate_db(self, driver: Driver, db_name: str) -> None:
         logger.debug("Cleaning KG")
         self.delete_database(db_name)
         driver.databases.create(db_name)
@@ -113,21 +127,14 @@ class TypeDbKnowledgeGraph(AbstractKnowledgeBase):
         :return: the number of inserted objects
         """
         # (temporarily) create a new driver here, so it can be used in another process
-        driver = TypeDB.core_driver(self.url)
-        with driver.session(self.db_name, SessionType.DATA) as session:
-            num_inserts = self._insert_k8s_objects_from_queue(session, queue)
-            logger.info(f"Inserted {num_inserts} into TypeDB '{self.db_name}'")
-
-    def start_session(self) -> TypeDBSession | None:
-        driver = TypeDB.core_driver(self.url)
+        driver = self._get_driver()
         try:
-            self.session = driver.session(self.db_name, SessionType.DATA)
-            return self.session
+            with driver.transaction(self.db_name, TransactionType.WRITE) as tx:
+                num_inserts = self._insert_k8s_objects_from_queue(tx, queue)
+                tx.commit()
+                logger.info(f"Inserted {num_inserts} into TypeDB '{self.db_name}'")
         except TypeDBDriverException as exc:
             logger.error(exc)
-            if self.db_name not in self.get_databases():
-                raise ValueError(f"The database with the name '{self.db_name}' does not exist!")
-            raise RuntimeError(f"Unable to connect to the knowledge base! Is the server running?")
 
     def __enter__(self):
         return self.start_session(self)
@@ -137,7 +144,7 @@ class TypeDbKnowledgeGraph(AbstractKnowledgeBase):
             self.session.close()
             self.session = None
 
-    def _insert_k8s_objects_from_queue(self, session, queue: Queue) -> int:
+    def _insert_k8s_objects_from_queue(self, tx: Transaction, queue: Queue) -> int:
         """
         Inserts the provided kubernetes objects to the databases via the provided session.
         :param session: the database session used for the transactions.
@@ -156,24 +163,22 @@ class TypeDbKnowledgeGraph(AbstractKnowledgeBase):
             queries = get_insert_query(obj)
             if isinstance(queries, str):
                 queries = [queries]
-            self.insert(queries, session=session)
+            self.insert(queries, tx=tx)
         return cnt
 
     @dispatch  # type: ignore
-    def insert(self, queries: List[str], *, session: TypeDBSession) -> None:
+    def insert(self, queries: List[str], *, tx: Transaction) -> None:
         """Execute several TypeQL queries on the database to insert the specified entities, relations and attributes.
 
         :param queries: a list of queries, that will be executed
         :param session: a session used for the transaction
         """
-        with session.transaction(TransactionType.WRITE) as transaction:
-            for q in queries:
-                logger.debug("Inserting " + q)
-                transaction.query.insert(q)
-            transaction.commit()
+        for q in queries:
+            logger.debug("Inserting " + q)
+            tx.query(q).resolve()
 
     @dispatch  # type: ignore
-    def insert(self, objects: List[model.DomainObject], *, session: TypeDBSession) -> List[str]:
+    def insert(self, objects: List[model.DomainObject], *, tx: Transaction) -> List[str]:
         """Convert the list of things and relations to their corresponding TypeQL representation and insert them.
 
         :param objects: a list of objects to be inserted
@@ -181,24 +186,23 @@ class TypeDbKnowledgeGraph(AbstractKnowledgeBase):
         :return: the queries used to insert the objects
         """
         queries = [q for obj in objects for q in get_insert_query(obj)]
-        self.insert(queries, session=session)
+        self.insert(queries, tx=tx)
         return queries
 
     @dispatch  # type: ignore
-    def delete(self, queries: List[str], *, session: TypeDBSession) -> None:
+    def delete(self, queries: List[str], *, tx: Transaction) -> None:
         """Execute several TypeQL queries on the database to delete the specified entities, relations and attributes.
 
         :param queries: a list of queries, that will be executed
         :param session: a session used for the transaction
         """
-        with session.transaction(TransactionType.WRITE) as transaction:
-            for q in queries:
-                logger.debug("deleting " + q)
-                transaction.query.delete(q)
-            transaction.commit()
+        # with tx.transaction(TransactionType.WRITE) as transaction:
+        for q in queries:
+            logger.debug("deleting " + q)
+            tx.query.delete(q)
 
     @dispatch  # type: ignore
-    def delete(self, objects: List[Union[model.Thing, model.Relation]], *, session: TypeDBSession) -> List[str]:
+    def delete(self, objects: List[Union[model.Thing, model.Relation]], *, tx: Transaction) -> List[str]:
         """Convert the list of things and relations to their corresponding delete queries and execute them.
 
         :param objects: a list of objects that will be deleted
@@ -207,30 +211,31 @@ class TypeDbKnowledgeGraph(AbstractKnowledgeBase):
         # TODO temporary workaround; get delete query directly from object instead of from the insert query
         insert_queries = [q for obj in objects for q in get_insert_query(obj)]
         delete_queries = transform_insert_to_delete_queries(insert_queries)
-        self.delete(delete_queries, session=session)
+        self.delete(delete_queries, tx=tx)
 
     @dispatch
-    def query(self, query: str, *, session: TypeDBSession) -> List[model.DomainObject]:
+    def query(self, query: str, *, tx: Transaction) -> List[model.DomainObject]:
         """Execute the TypeQL query on the database to retrieve data
 
         :param query: the executed TypeQL query
         :param session: a session used for the transaction
         :return: a list of TypeDB results
         """
-        return self.query([query], session=session)
+        return self.query([query], tx=tx)
 
     @dispatch
-    def query(self, queries: List[str], *, session: TypeDBSession) -> List[model.DomainObject]:
+    def query(self, queries: List[str], *, tx: Transaction) -> List[model.DomainObject]:
         """Execute all TypeQL queries on the database to retrieve data
 
         :param query: the executed TypeQL queries
         :param session: a session used for the transaction
         :return: a list of TypeDB results
         """
-        opts = TypeDBOptions()
-        opts.infer = True
+        # opts = TypeDBOptions()
+        # opts.infer = True
         results = []
-        with session.transaction(TransactionType.READ, options=opts) as rx:
+        with tx.transaction(TransactionType.READ) as rx:
+            # with tx.transaction(TransactionType.READ, options=opts) as rx:
             for query in queries:
                 logger.debug(f'Querying "{query}"')
                 res_iter = rx.query.match(query)
